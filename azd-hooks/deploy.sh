@@ -16,8 +16,7 @@ echo "No environment name provided - aborting"
 exit 1
 fi
 
-# Update regex to require min 5 chars, and use exit 1 for errors
-if [[ $SERVICE_NAME =~ ^[a-z0-9]{5,12}$ ]]; then
+if [[ $SERVICE_NAME =~ ^[a-z0-9]{3,12}$ ]]; then
     echo "service name $SERVICE_NAME is valid"
 else
     echo "service name $SERVICE_NAME is invalid - only numbers and lower case min 5 and max 12 characters allowed - aborting"
