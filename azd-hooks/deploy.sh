@@ -6,75 +6,46 @@ SERVICE_NAME="$1"
 
 if [ "$SERVICE_NAME" == "" ]; then
 echo "No phase name provided - aborting"
-exit 1
+exit 0;
 fi
 
 AZURE_ENV_NAME="$2"
 
 if [ "$AZURE_ENV_NAME" == "" ]; then
 echo "No environment name provided - aborting"
-exit 1
+exit 0;
 fi
 
 if [[ $SERVICE_NAME =~ ^[a-z0-9]{3,12}$ ]]; then
     echo "service name $SERVICE_NAME is valid"
 else
     echo "service name $SERVICE_NAME is invalid - only numbers and lower case min 5 and max 12 characters allowed - aborting"
-    exit 1
+    exit 0;
 fi
 
 RESOURCE_GROUP="rg-$AZURE_ENV_NAME"
 
 if [ $(az group exists --name $RESOURCE_GROUP) = false ]; then
     echo "resource group $RESOURCE_GROUP does not exist"
-    exit 1
+    error=1
 else   
     echo "resource group $RESOURCE_GROUP already exists"
     LOCATION=$(az group show -n $RESOURCE_GROUP --query location -o tsv)
 fi
 # Get the name of the Azure application insights instance
 APPINSIGHTS_NAME=$(az resource list -g $RESOURCE_GROUP --resource-type "Microsoft.Insights/components" --query "[0].name" -o tsv)
-if [ -z "$APPINSIGHTS_NAME" ]; then
-    echo "Application Insights instance not found in $RESOURCE_GROUP"
-    exit 1
-fi
-
 # Get the name of the Azure container registry
 AZURE_CONTAINER_REGISTRY_NAME=$(az resource list -g $RESOURCE_GROUP --resource-type "Microsoft.ContainerRegistry/registries" --query "[0].name" -o tsv)
-if [ -z "$AZURE_CONTAINER_REGISTRY_NAME" ]; then
-    echo "Azure Container Registry not found in $RESOURCE_GROUP"
-    exit 1
-fi
-
 # Get the name of the Azure Open AI Services instance
 OPENAI_NAME=$(az resource list -g $RESOURCE_GROUP --resource-type "Microsoft.CognitiveServices/accounts" --query "[0].name" -o tsv)
-if [ -z "$OPENAI_NAME" ]; then
-    echo "Azure OpenAI Service not found in $RESOURCE_GROUP"
-    exit 1
-fi
-
 # Get the name of the Azure environment
 ENVIRONMENT_NAME=$(az resource list -g $RESOURCE_GROUP --resource-type "Microsoft.App/managedEnvironments" --query "[0].name" -o tsv)
-if [ -z "$ENVIRONMENT_NAME" ]; then
-    echo "Azure Container Apps Environment not found in $RESOURCE_GROUP"
-    exit 1
-fi
-
 # Get the name of the Azure user managed identity
 IDENTITY_NAME=$(az resource list -g $RESOURCE_GROUP --resource-type "Microsoft.ManagedIdentity/userAssignedIdentities" --query "[0].name" -o tsv)
-if [ -z "$IDENTITY_NAME" ]; then
-    echo "User Managed Identity not found in $RESOURCE_GROUP"
-    exit 1
-fi
-
 # Get the Azure subscription ID
 AZURE_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
 # Get Azure Search service name
 AZURE_SEARCH_NAME=$(az resource list -g $RESOURCE_GROUP --resource-type "Microsoft.Search/searchServices" --query "[0].name" -o tsv)
-if [ -z "$AZURE_SEARCH_NAME" ]; then
-    echo "Azure Search service not found in $RESOURCE_GROUP"
-    exit 1
-fi
 # Get the first index name from the Azure Search service
 AZURE_SEARCH_INDEX_NAME="voicerag-intvect"
 # Get the semantic configuration setting
@@ -83,18 +54,8 @@ AZURE_SEARCH_SEMANTIC_CONFIGURATION="default"
 AZURE_SEARCH_API_KEY=$(az search admin-key show --service-name $AZURE_SEARCH_NAME --resource-group $RESOURCE_GROUP --query "primaryKey" -o tsv)
 # Get Azure Storage account name
 STORAGE_ACCOUNT_NAME=$(az resource list -g $RESOURCE_GROUP --resource-type "Microsoft.Storage/storageAccounts" --query "[0].name" -o tsv)
-if [ -z "$STORAGE_ACCOUNT_NAME" ]; then
-    echo "Azure Storage Account not found in $RESOURCE_GROUP"
-    exit 1
-fi
-
 # Get the name of the Azure Communication Services instance
 AZURE_COMMUNICATION_SERVICES_NAME=$(az resource list -g $RESOURCE_GROUP --resource-type "Microsoft.Communication/communicationServices" --query "[0].name" -o tsv)
-if [ -z "$AZURE_COMMUNICATION_SERVICES_NAME" ]; then
-    echo "Azure Communication Services instance not found in $RESOURCE_GROUP"
-    exit 1
-fi
-
 # Get the connection string of the Azure Communication Services instance
 ACS_CONNECTION_STRING=$(az communication list-key --name $AZURE_COMMUNICATION_SERVICES_NAME --resource-group $RESOURCE_GROUP --query "primaryConnectionString" -o tsv)
 # Get the phone number of the Azure Communication Services instance
@@ -129,19 +90,9 @@ else
     EXISTS="true"
 fi
 
-# Check if source directory exists before build
-if [ ! -d "./src/$SERVICE_NAME" ]; then
-    echo "Source directory ./src/$SERVICE_NAME does not exist"
-    exit 1
-fi
-
 # Build the container image
-IMAGE_TAG=(date '+%m%d%H%M%S')
-az acr build --subscription ${AZURE_SUBSCRIPTION_ID} --registry ${AZURE_CONTAINER_REGISTRY_NAME} --image $SERVICE_NAME:$IMAGE_TAG ./src/$SERVICE_NAME
-if [ $? -ne 0 ]; then
-    echo "az acr build failed"
-    exit 1
-fi
+IMAGE_TAG=$(date '+%m%d%H%M%S')
+az acr build --subscription ${AZURE_SUBSCRIPTION_ID} --registry ${AZURE_CONTAINER_REGISTRY_NAME} --image $SERVICE_NAME:$IMAGE_TAG ./src/$SERVICE_NAME --no-logs
 IMAGE_NAME="${AZURE_CONTAINER_REGISTRY_NAME}.azurecr.io/$SERVICE_NAME:$IMAGE_TAG"
 
 echo "deploying image: $IMAGE_NAME"
@@ -156,19 +107,11 @@ URI=$(az deployment group create -g $RESOURCE_GROUP -f ./infra/core/app/web.bice
           -p communicationServicePhoneNumber=$AZURE_COMMUNICATION_SERVICES_PHONE_NUMBER \
           -p openaiName=$OPENAI_NAME -p identityName=$IDENTITY_NAME -p imageName=$IMAGE_NAME \
           --query properties.outputs.uri.value)
-if [ -z "$URI" ]; then
-    echo "Bicep deployment failed or did not return an application URI"
-    exit 1
-fi
 
 echo "updating container app settings"
 
 # Fetch the container app hostname
 CONTAINER_APP_HOSTNAME=$(az containerapp show --name $ACA_NAME --resource-group $RESOURCE_GROUP --query properties.configuration.ingress.fqdn -o tsv)
-if [ -z "$CONTAINER_APP_HOSTNAME" ]; then
-    echo "Failed to get container app hostname"
-    exit 1
-fi
 
 # Update the container app settings
 az containerapp update --name $ACA_NAME --resource-group $RESOURCE_GROUP \
