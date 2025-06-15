@@ -136,7 +136,7 @@ if [ ! -d "./src/$SERVICE_NAME" ]; then
 fi
 
 # Build the container image
-IMAGE_TAG=$(date '+%m%d%H%M%S')
+IMAGE_TAG=(date '+%m%d%H%M%S')
 az acr build --subscription ${AZURE_SUBSCRIPTION_ID} --registry ${AZURE_CONTAINER_REGISTRY_NAME} --image $SERVICE_NAME:$IMAGE_TAG ./src/$SERVICE_NAME
 if [ $? -ne 0 ]; then
     echo "az acr build failed"
