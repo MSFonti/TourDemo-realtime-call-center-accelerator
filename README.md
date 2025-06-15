@@ -62,7 +62,7 @@ To deploy the application, you can use the script provided in the `azd-hooks` fo
 az extension add --name communication
 ```
 
-Run the script with the following commands:
+Run the script with the following commands (Controll that you are in Bash Mode):
 
 ```bash
 # Get and set the value for AZURE_ENV_NAME
